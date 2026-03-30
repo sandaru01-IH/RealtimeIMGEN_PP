@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Street Cloud — Presenter</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body class="presenter-page">
+
+  <!-- Top bar -->
+  <header class="top-bar">
+    <span class="logo">Street Cloud</span>
+    <span class="total-counter">
+      <strong id="total-count">0</strong> submissions
+    </span>
+    <span class="live-badge">
+      <span class="live-dot"></span>
+      LIVE
+    </span>
+  </header>
+
+  <!-- Main content -->
+  <main class="main-split">
+    <!-- Left: generated image -->
+    <section class="image-panel">
+      <img id="street-image" class="street-image" alt="Generated street" />
+    </section>
+
+    <!-- Right: word cloud -->
+    <section class="cloud-panel">
+      <svg id="word-cloud-svg"></svg>
+    </section>
+  </main>
+
+  <!-- Bottom bar -->
+  <footer class="bottom-bar">
+    <span>Powered by Street Cloud</span>
+    <span class="top-word">
+      Top word: <strong id="top-word">—</strong>
+    </span>
+  </footer>
+
+  <!-- D3 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3-cloud@1.2.5/build/d3.layout.cloud.min.js"></script>
+
+  <script>
+    // ---------- State ----------
+    const totalCountEl = document.getElementById('total-count');
+    const topWordEl    = document.getElementById('top-word');
+    const imgEl        = document.getElementById('street-image');
+    const svgEl        = document.getElementById('word-cloud-svg');
+
+    let currentWords = [];
+
+    // ---------- Colour palette ----------
+    const PALETTE = [
+      '#00ff88', '#00e5ff', '#ff6b6b', '#ffd166',
+      '#a8ff78', '#c77dff', '#ff9f1c', '#38b2ff',
+      '#f72585', '#7efff5', '#ffe66d', '#06d6a0',
+    ];
+    function wordColor(i) {
+      return PALETTE[i % PALETTE.length];
+    }
+
+    // ---------- Word Cloud ----------
+    function renderCloud(words) {
+      if (!words || words.length === 0) return;
+
+      const svg   = d3.select(svgEl);
+      const W     = svgEl.clientWidth  || 600;
+      const H     = svgEl.clientHeight || 500;
+
+      svg.attr('width', W).attr('height', H);
+
+      d3.layout.cloud()
+        .size([W, H])
+        .words(words.map(w => ({ text: w.text, size: w.size })))
+        .padding(6)
+        .rotate(() => (Math.random() > 0.7 ? (Math.random() < 0.5 ? 90 : -90) : 0))
+        .font('Segoe UI, sans-serif')
+        .fontWeight('bold')
+        .fontSize(d => d.size)
+        .on('end', draw)
+        .start();
+
+      function draw(layoutWords) {
+        svg.selectAll('*').remove();
+
+        const g = svg.append('g')
+          .attr('transform', `translate(${W / 2},${H / 2})`);
+
+        g.selectAll('text')
+          .data(layoutWords)
+          .enter()
+          .append('text')
+          .style('font-size', d => `${d.size}px`)
+          .style('font-family', 'Segoe UI, sans-serif')
+          .style('font-weight', 'bold')
+          .style('fill', (_, i) => wordColor(i))
+          .style('cursor', 'default')
+          .style('opacity', 0)
+          .attr('text-anchor', 'middle')
+          .attr('transform', d =>
+            `translate(${d.x},${d.y}) rotate(${d.rotate})`
+          )
+          .text(d => d.text)
+          .transition()
+          .duration(600)
+          .style('opacity', 1);
+      }
+    }
+
+    // ---------- Image swap with fade ----------
+    function swapImage(b64) {
+      if (!b64) return;
+      imgEl.classList.add('fading');
+      setTimeout(() => {
+        imgEl.src = `data:image/png;base64,${b64}`;
+        imgEl.classList.remove('fading');
+      }, 500);
+    }
+
+    // ---------- Handle incoming WS message ----------
+    function handleUpdate(data) {
+      // Total count
+      if (data.total_submissions !== undefined) {
+        totalCountEl.textContent = data.total_submissions;
+      }
+
+      // Word cloud
+      if (data.words && data.words.length > 0) {
+        currentWords = data.words;
+        renderCloud(currentWords);
+        topWordEl.textContent = currentWords[0]?.text ?? '—';
+      }
+
+      // Image (only on full update, not words_update without new image)
+      if (data.image) {
+        swapImage(data.image);
+      }
+    }
+
+    // ---------- WebSocket ----------
+    function connectWS() {
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      const ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+      ws.onmessage = (evt) => {
+        try {
+          handleUpdate(JSON.parse(evt.data));
+        } catch (_) {}
+      };
+
+      ws.onclose = () => setTimeout(connectWS, 2000);
+      ws.onerror = () => ws.close();
+    }
+
+    connectWS();
+
+    // ---------- Re-render cloud on resize ----------
+    let resizeTimer;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        if (currentWords.length) renderCloud(currentWords);
+      }, 250);
+    });
+  </script>
+</body>
+</html>

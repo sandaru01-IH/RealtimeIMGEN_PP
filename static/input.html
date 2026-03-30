@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Street Cloud — Submit</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body class="input-page">
+  <h1 class="input-logo">Street Cloud</h1>
+  <p class="input-subtitle">What do you want on this street?</p>
+
+  <div class="input-card">
+    <input
+      id="word-input"
+      class="word-input"
+      type="text"
+      placeholder="e.g. trees, benches, art…"
+      maxlength="60"
+      autocomplete="off"
+      autocorrect="off"
+      spellcheck="false"
+    />
+    <button id="submit-btn" class="submit-btn">Submit</button>
+    <div id="feedback" class="feedback hidden"></div>
+    <p class="counter">
+      <span id="total-count">0</span> words submitted so far
+    </p>
+  </div>
+
+  <script>
+    const input       = document.getElementById('word-input');
+    const btn         = document.getElementById('submit-btn');
+    const feedback    = document.getElementById('feedback');
+    const totalCount  = document.getElementById('total-count');
+
+    let lastSubmitTime = 0;
+    const COOLDOWN_MS  = 1000;
+
+    // ---------- WebSocket for live count ----------
+    function connectWS() {
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      const ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+      ws.onmessage = (evt) => {
+        try {
+          const data = JSON.parse(evt.data);
+          if (data.total_submissions !== undefined) {
+            totalCount.textContent = data.total_submissions;
+          }
+        } catch (_) {}
+      };
+
+      ws.onclose = () => setTimeout(connectWS, 3000);
+      ws.onerror = () => ws.close();
+    }
+
+    connectWS();
+
+    // ---------- Submit logic ----------
+    function showFeedback(msg, color = 'var(--accent)') {
+      feedback.textContent = msg;
+      feedback.style.color = color;
+      feedback.classList.remove('hidden');
+      setTimeout(() => feedback.classList.add('hidden'), 2000);
+    }
+
+    async function submitWord() {
+      const word = input.value.trim();
+      if (!word) return;
+
+      const now = Date.now();
+      if (now - lastSubmitTime < COOLDOWN_MS) {
+        showFeedback('Wait a moment…', 'var(--text-muted)');
+        return;
+      }
+
+      btn.disabled = true;
+      lastSubmitTime = now;
+
+      try {
+        const resp = await fetch('/submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ word }),
+        });
+        const data = await resp.json();
+
+        if (data.success) {
+          input.value = '';
+          showFeedback('✓ Added!');
+          if (data.total !== undefined) totalCount.textContent = data.total;
+        } else {
+          showFeedback(data.error || 'Error', 'var(--danger)');
+        }
+      } catch (err) {
+        showFeedback('Connection error', 'var(--danger)');
+      } finally {
+        setTimeout(() => { btn.disabled = false; }, COOLDOWN_MS);
+        input.focus();
+      }
+    }
+
+    btn.addEventListener('click', submitWord);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') submitWord();
+    });
+
+    // Auto-focus on load
+    input.focus();
+  </script>
+</body>
+</html>
