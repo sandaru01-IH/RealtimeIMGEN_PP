@@ -6,7 +6,7 @@
 [![Engine: ComfyUI](https://img.shields.io/badge/Engine-ComfyUI-green.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Realtime: WebSocket](https://img.shields.io/badge/Realtime-WebSocket-orange.svg)](#-architecture)
 
-**Street Cloud** is a real-time participatory urban design tool built for planning workshops, urban futures congresses, and community engagement sessions. Inspired by [Lior Steinberg's Street Cloud concept](https://www.linkedin.com/in/liorsteinberg/), this open-source implementation runs **100% locally on your GPU** — zero API costs, zero cloud dependency, fully offline-capable.
+**Street Cloud** is a real-time participatory urban design tool built for planning workshops, urban futures congresses, and community engagement sessions. This open-source implementation runs **100% locally on your GPU** — zero API costs, zero cloud dependency, fully offline-capable.
 
 Audience members submit words describing their ideal street redesign. The tool responds with a **live animated word cloud** and **AI-regenerated street imagery every 5 seconds**, powered by Stable Diffusion running on your own machine.
 
