@@ -5,6 +5,12 @@ submit words describing their ideal street; the app shows a live animated word
 cloud and regenerates a street image every 5 seconds using local Stable
 Diffusion (ComfyUI + SDXL Turbo).
 
+## Affiliation
+
+**SmartMind UI & AI Group**  
+**Urban Simulation Lab**  
+Department of Town & Country Planning  
+University of Moratuwa, Sri Lanka
 ---
 
 ## Architecture
