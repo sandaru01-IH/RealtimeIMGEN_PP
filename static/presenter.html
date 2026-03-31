@@ -121,7 +121,9 @@
           setMode(true);
           console.log('[Upload]', data.message);
         } else {
-          alert('Upload failed: ' + (data.error || 'Unknown error'));
+          // data.error is our own message; data.detail is FastAPI's error shape
+          const msg = data.error || (data.detail && JSON.stringify(data.detail)) || `Server error ${resp.status}`;
+          alert('Upload failed: ' + msg);
         }
       } catch (err) {
         alert('Upload error: ' + err.message);

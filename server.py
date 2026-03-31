@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import json
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -143,46 +144,52 @@ async def get_words():
 async def upload_base_image(file: UploadFile = File(...)):
     """
     Upload a real street photo to use as the img2img base.
-    Accepts JPEG or PNG. Saves a copy to static/ for the presenter preview.
+    Accepts JPEG, PNG, or WebP. Saves a copy to static/ for the presenter preview.
     """
-    if not file.content_type or not file.content_type.startswith("image/"):
-        return {"success": False, "error": "File must be an image (JPEG or PNG)"}
+    try:
+        # Determine extension from filename; fall back to .jpg
+        raw_name = file.filename or "upload.jpg"
+        ext = Path(raw_name).suffix.lower()
+        if ext not in (".jpg", ".jpeg", ".png", ".webp"):
+            ext = ".jpg"
 
-    contents = await file.read()
-    if len(contents) > 20 * 1024 * 1024:  # 20 MB limit
-        return {"success": False, "error": "Image too large (max 20 MB)"}
+        contents = await file.read()
+        if len(contents) == 0:
+            return {"success": False, "error": "Uploaded file is empty"}
+        if len(contents) > 20 * 1024 * 1024:
+            return {"success": False, "error": "Image too large (max 20 MB)"}
 
-    # Save a copy to static/ so it can be previewed in the browser
-    ext = Path(file.filename).suffix.lower() if file.filename else ".jpg"
-    if ext not in (".jpg", ".jpeg", ".png", ".webp"):
-        ext = ".jpg"
-    dest = STATIC_DIR / f"base_image{ext}"
-    dest.write_bytes(contents)
+        # Save a copy to static/ so the presenter can preview it
+        dest = STATIC_DIR / f"base_image{ext}"
+        dest.write_bytes(contents)
 
-    # Upload to ComfyUI and store filename for img2img workflow
-    ok = image_generator.set_base_image(contents, f"street_base{ext}")
+        # Upload to ComfyUI for img2img workflow
+        ok = image_generator.set_base_image(contents, f"street_base{ext}")
 
-    # Broadcast the new base image immediately to all connected presenters
-    global _last_image_b64
-    import base64
-    _last_image_b64 = base64.b64encode(contents).decode()
-    await _broadcast(
-        {
-            "type": "base_image_set",
-            "image": _last_image_b64,
-            "has_base_image": True,
-            "words": word_manager.get_top_words(20),
-            "total_submissions": word_manager.total_submissions(),
+        # Broadcast the photo immediately so the presenter panel updates
+        global _last_image_b64
+        _last_image_b64 = base64.b64encode(contents).decode()
+        await _broadcast(
+            {
+                "type": "base_image_set",
+                "image": _last_image_b64,
+                "has_base_image": True,
+                "words": word_manager.get_top_words(20),
+                "total_submissions": word_manager.total_submissions(),
+            }
+        )
+
+        return {
+            "success": True,
+            "comfyui_uploaded": ok,
+            "filename": f"base_image{ext}",
+            "message": "Base image set — img2img mode active." if ok else
+                       "Image saved. ComfyUI upload failed — will retry on next generation.",
         }
-    )
 
-    return {
-        "success": True,
-        "comfyui_uploaded": ok,
-        "filename": f"base_image{ext}",
-        "message": "Base image set. img2img mode active." if ok else
-                   "Image saved but ComfyUI upload failed — will retry on next generation.",
-    }
+    except Exception as e:
+        print(f"[upload-base-image] Error: {e}")
+        return {"success": False, "error": str(e)}
 
 
 @app.delete("/upload-base-image")
