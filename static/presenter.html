@@ -14,6 +14,19 @@
     <span class="total-counter">
       <strong id="total-count">0</strong> submissions
     </span>
+
+    <!-- Base image upload controls -->
+    <div class="upload-controls">
+      <input type="file" id="base-image-input" accept="image/*" style="display:none" />
+      <button id="upload-btn" class="upload-btn" title="Upload a real street photo for img2img">
+        + Street Photo
+      </button>
+      <button id="clear-btn" class="clear-btn" title="Remove base image, back to txt2img" style="display:none">
+        ✕ Clear Photo
+      </button>
+      <span id="mode-badge" class="mode-badge txt2img">txt2img</span>
+    </div>
+
     <span class="live-badge">
       <span class="live-dot"></span>
       LIVE
@@ -25,6 +38,16 @@
     <!-- Left: generated image -->
     <section class="image-panel">
       <img id="street-image" class="street-image" alt="Generated street" />
+      <div id="upload-overlay" class="upload-overlay" style="display:none">
+        <div class="upload-overlay-inner">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#00ff88" stroke-width="1.5">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <p>Uploading street photo…</p>
+        </div>
+      </div>
     </section>
 
     <!-- Right: word cloud -->
@@ -36,6 +59,7 @@
   <!-- Bottom bar -->
   <footer class="bottom-bar">
     <span>Powered by Street Cloud</span>
+    <span id="mode-label" class="mode-label">Generating from scratch</span>
     <span class="top-word">
       Top word: <strong id="top-word">—</strong>
     </span>
@@ -46,13 +70,78 @@
   <script src="https://cdn.jsdelivr.net/npm/d3-cloud@1.2.5/build/d3.layout.cloud.min.js"></script>
 
   <script>
-    // ---------- State ----------
-    const totalCountEl = document.getElementById('total-count');
-    const topWordEl    = document.getElementById('top-word');
-    const imgEl        = document.getElementById('street-image');
-    const svgEl        = document.getElementById('word-cloud-svg');
+    // ---------- Elements ----------
+    const totalCountEl  = document.getElementById('total-count');
+    const topWordEl     = document.getElementById('top-word');
+    const imgEl         = document.getElementById('street-image');
+    const svgEl         = document.getElementById('word-cloud-svg');
+    const uploadBtn     = document.getElementById('upload-btn');
+    const clearBtn      = document.getElementById('clear-btn');
+    const fileInput     = document.getElementById('base-image-input');
+    const modeBadge     = document.getElementById('mode-badge');
+    const modeLabel     = document.getElementById('mode-label');
+    const uploadOverlay = document.getElementById('upload-overlay');
 
     let currentWords = [];
+
+    // ---------- Mode UI ----------
+    function setMode(hasBase) {
+      if (hasBase) {
+        modeBadge.textContent = 'img2img';
+        modeBadge.className = 'mode-badge img2img';
+        modeLabel.textContent = 'Modifying your street photo';
+        clearBtn.style.display = 'inline-flex';
+        uploadBtn.textContent = '↺ Change Photo';
+      } else {
+        modeBadge.textContent = 'txt2img';
+        modeBadge.className = 'mode-badge txt2img';
+        modeLabel.textContent = 'Generating from scratch';
+        clearBtn.style.display = 'none';
+        uploadBtn.textContent = '+ Street Photo';
+      }
+    }
+
+    // ---------- Upload ----------
+    uploadBtn.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+
+      uploadOverlay.style.display = 'flex';
+      uploadBtn.disabled = true;
+
+      const form = new FormData();
+      form.append('file', file);
+
+      try {
+        const resp = await fetch('/upload-base-image', { method: 'POST', body: form });
+        const data = await resp.json();
+        if (data.success) {
+          setMode(true);
+          console.log('[Upload]', data.message);
+        } else {
+          alert('Upload failed: ' + (data.error || 'Unknown error'));
+        }
+      } catch (err) {
+        alert('Upload error: ' + err.message);
+      } finally {
+        uploadOverlay.style.display = 'none';
+        uploadBtn.disabled = false;
+        fileInput.value = '';
+      }
+    });
+
+    // ---------- Clear ----------
+    clearBtn.addEventListener('click', async () => {
+      if (!confirm('Remove street photo? Generation will go back to txt2img mode.')) return;
+      try {
+        await fetch('/upload-base-image', { method: 'DELETE' });
+        setMode(false);
+      } catch (err) {
+        alert('Clear failed: ' + err.message);
+      }
+    });
 
     // ---------- Colour palette ----------
     const PALETTE = [
@@ -60,17 +149,15 @@
       '#a8ff78', '#c77dff', '#ff9f1c', '#38b2ff',
       '#f72585', '#7efff5', '#ffe66d', '#06d6a0',
     ];
-    function wordColor(i) {
-      return PALETTE[i % PALETTE.length];
-    }
+    function wordColor(i) { return PALETTE[i % PALETTE.length]; }
 
     // ---------- Word Cloud ----------
     function renderCloud(words) {
       if (!words || words.length === 0) return;
 
-      const svg   = d3.select(svgEl);
-      const W     = svgEl.clientWidth  || 600;
-      const H     = svgEl.clientHeight || 500;
+      const svg = d3.select(svgEl);
+      const W   = svgEl.clientWidth  || 600;
+      const H   = svgEl.clientHeight || 500;
 
       svg.attr('width', W).attr('height', H);
 
@@ -87,14 +174,9 @@
 
       function draw(layoutWords) {
         svg.selectAll('*').remove();
-
-        const g = svg.append('g')
-          .attr('transform', `translate(${W / 2},${H / 2})`);
-
+        const g = svg.append('g').attr('transform', `translate(${W / 2},${H / 2})`);
         g.selectAll('text')
-          .data(layoutWords)
-          .enter()
-          .append('text')
+          .data(layoutWords).enter().append('text')
           .style('font-size', d => `${d.size}px`)
           .style('font-family', 'Segoe UI, sans-serif')
           .style('font-weight', 'bold')
@@ -102,13 +184,9 @@
           .style('cursor', 'default')
           .style('opacity', 0)
           .attr('text-anchor', 'middle')
-          .attr('transform', d =>
-            `translate(${d.x},${d.y}) rotate(${d.rotate})`
-          )
+          .attr('transform', d => `translate(${d.x},${d.y}) rotate(${d.rotate})`)
           .text(d => d.text)
-          .transition()
-          .duration(600)
-          .style('opacity', 1);
+          .transition().duration(600).style('opacity', 1);
       }
     }
 
@@ -124,21 +202,19 @@
 
     // ---------- Handle incoming WS message ----------
     function handleUpdate(data) {
-      // Total count
       if (data.total_submissions !== undefined) {
         totalCountEl.textContent = data.total_submissions;
       }
-
-      // Word cloud
       if (data.words && data.words.length > 0) {
         currentWords = data.words;
         renderCloud(currentWords);
         topWordEl.textContent = currentWords[0]?.text ?? '—';
       }
-
-      // Image (only on full update, not words_update without new image)
       if (data.image) {
         swapImage(data.image);
+      }
+      if (data.has_base_image !== undefined) {
+        setMode(data.has_base_image);
       }
     }
 
@@ -146,26 +222,18 @@
     function connectWS() {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
       const ws = new WebSocket(`${proto}://${location.host}/ws`);
-
-      ws.onmessage = (evt) => {
-        try {
-          handleUpdate(JSON.parse(evt.data));
-        } catch (_) {}
-      };
-
+      ws.onmessage = (evt) => { try { handleUpdate(JSON.parse(evt.data)); } catch (_) {} };
       ws.onclose = () => setTimeout(connectWS, 2000);
       ws.onerror = () => ws.close();
     }
 
     connectWS();
 
-    // ---------- Re-render cloud on resize ----------
+    // ---------- Resize ----------
     let resizeTimer;
     window.addEventListener('resize', () => {
       clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(() => {
-        if (currentWords.length) renderCloud(currentWords);
-      }, 250);
+      resizeTimer = setTimeout(() => { if (currentWords.length) renderCloud(currentWords); }, 250);
     });
   </script>
 </body>
