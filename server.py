@@ -54,7 +54,8 @@ async def image_generation_loop():
 
         top_words = word_manager.get_top_words(20)
         word_texts = [w["text"] for w in top_words[:8]]
-        positive, negative = build_prompt(word_texts)
+        is_img2img = image_generator.has_base_image()
+        positive, negative = build_prompt(word_texts, img2img=is_img2img)
 
         loop = asyncio.get_event_loop()
         b64 = await loop.run_in_executor(
