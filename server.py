@@ -46,6 +46,12 @@ async def image_generation_loop():
     global _last_image_b64
     while True:
         await asyncio.sleep(5)
+
+        # If a real street photo is loaded but no words yet, keep showing the
+        # original photo — don't replace it with a generation.
+        if image_generator.has_base_image() and word_manager.total_submissions() == 0:
+            continue
+
         top_words = word_manager.get_top_words(20)
         word_texts = [w["text"] for w in top_words[:8]]
         positive, negative = build_prompt(word_texts)
