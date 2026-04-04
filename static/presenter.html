@@ -17,10 +17,10 @@
 
     <div class="upload-controls">
       <input type="file" id="base-image-input" accept="image/*" style="display:none" />
-      <button id="upload-btn" class="upload-btn" title="Upload a real street photo for img2img">
+      <button id="upload-btn" class="upload-btn" title="Upload a real street photo">
         + Street Photo
       </button>
-      <button id="clear-btn" class="clear-btn" title="Remove base image" style="display:none">
+      <button id="clear-btn" class="clear-btn" style="display:none" title="Remove base image">
         ✕ Clear Photo
       </button>
       <span id="mode-badge" class="mode-badge txt2img">txt2img</span>
@@ -35,10 +35,9 @@
   <!-- Main content -->
   <main class="main-split">
 
-    <!-- Left: generated / base image — two layers for crossfade -->
+    <!-- Left: street image (single element — no double-buffer confusion) -->
     <section class="image-panel">
-      <img id="street-img-a" class="street-image visible" alt="Street view" />
-      <img id="street-img-b" class="street-image"         alt="Street view" />
+      <img id="street-image" class="street-image" alt="Street view" />
       <div id="upload-overlay" class="upload-overlay" style="display:none">
         <div class="upload-overlay-inner">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none"
@@ -61,6 +60,7 @@
 
   <!-- Bottom bar -->
   <footer class="bottom-bar">
+
     <div class="bottom-left">
       <div class="powered-by">Powered by <strong>SmartMind UI &amp; AI Group</strong></div>
       <div id="mode-label" class="mode-label">Generating from scratch</div>
@@ -71,10 +71,11 @@
     </div>
 
     <div class="bottom-right affiliation">
-      <div>SmartMind UI &amp; AI Group &nbsp;|&nbsp; Urban Simulation Lab</div>
-      <div>Department of Town &amp; Country Planning &middot; University of Moratuwa, Sri Lanka</div>
-      <div>Developed by <strong>Sandaruwan Sankalpa</strong> &mdash; Dept. of Town &amp; Country Planning, University of Moratuwa</div>
+      <div class="aff-group">SmartMind UI &amp; AI Group &nbsp;|&nbsp; Urban Simulation Lab</div>
+      <div class="aff-dept">Department of Town &amp; Country Planning &middot; University of Moratuwa, Sri Lanka</div>
+      <div class="aff-dev">Developed by <strong>Sandaruwan Sankalpa</strong> &mdash; Dept. of Town &amp; Country Planning, University of Moratuwa</div>
     </div>
+
   </footer>
 
   <!-- D3 -->
@@ -82,11 +83,10 @@
   <script src="https://cdn.jsdelivr.net/npm/d3-cloud@1.2.5/build/d3.layout.cloud.min.js"></script>
 
   <script>
-    // ── Elements ───────────────────────────────────────────────────────────
+    // ── Elements ──────────────────────────────────────────────────────────
     const totalCountEl  = document.getElementById('total-count');
     const topWordEl     = document.getElementById('top-word');
-    const imgA          = document.getElementById('street-img-a');
-    const imgB          = document.getElementById('street-img-b');
+    const imgEl         = document.getElementById('street-image');
     const svgEl         = document.getElementById('word-cloud-svg');
     const uploadBtn     = document.getElementById('upload-btn');
     const clearBtn      = document.getElementById('clear-btn');
@@ -95,27 +95,28 @@
     const modeLabel     = document.getElementById('mode-label');
     const uploadOverlay = document.getElementById('upload-overlay');
 
-    // ── Image crossfade (double-buffer) ────────────────────────────────────
-    // imgA starts visible; imgB is hidden. We load the next image into the
-    // hidden slot, wait for onload, then swap opacity — zero blank period.
-    let activeSlot = 'a';
+    // ── Image crossfade via JS preloader ─────────────────────────────────
+    // We load the new image into a hidden Image() object first.
+    // Only when it's fully loaded do we swap the visible <img> src,
+    // then trigger the CSS fade-in animation — zero blank flash.
+    const preloader = new Image();
 
     function swapImage(b64) {
       if (!b64) return;
-      const curr = activeSlot === 'a' ? imgA : imgB;
-      const next = activeSlot === 'a' ? imgB : imgA;
-
-      next.onload = () => {
-        next.classList.add('visible');
-        curr.classList.remove('visible');
-        activeSlot = activeSlot === 'a' ? 'b' : 'a';
-      };
-      // Detect format: JPEG starts with /9j, PNG with iVBOR
       const mime = b64.startsWith('/9j') ? 'image/jpeg' : 'image/png';
-      next.src = `data:${mime};base64,${b64}`;
+      const src  = `data:${mime};base64,${b64}`;
+
+      preloader.onload = () => {
+        imgEl.classList.remove('fade-in');
+        // Force reflow so the animation restarts cleanly each time
+        void imgEl.offsetWidth;
+        imgEl.src = src;
+        imgEl.classList.add('fade-in');
+      };
+      preloader.src = src;
     }
 
-    // ── Word cloud (D3 enter / update / exit — no full redraw) ─────────────
+    // ── Word cloud (D3 enter / update / exit — no full redraw) ───────────
     const PALETTE = [
       '#00ff88','#00e5ff','#ff6b6b','#ffd166',
       '#a8ff78','#c77dff','#ff9f1c','#38b2ff',
@@ -123,39 +124,37 @@
     ];
     function wordColor(i) { return PALETTE[i % PALETTE.length]; }
 
-    let cloudGroup = null;   // persistent <g> — never destroyed
-    let currentW = 0, currentH = 0;
+    let cloudGroup = null;
+    let cloudW = 0, cloudH = 0;
 
-    function getCloudGroup() {
-      const svg = d3.select(svgEl);
+    function getOrCreateGroup() {
       const W = svgEl.clientWidth  || 640;
       const H = svgEl.clientHeight || 520;
-      svg.attr('width', W).attr('height', H);
+      d3.select(svgEl).attr('width', W).attr('height', H);
 
       if (!cloudGroup) {
-        cloudGroup = svg.append('g').attr('class', 'cloud-g');
+        cloudGroup = d3.select(svgEl).append('g').attr('class', 'cloud-g');
       }
-      // Only update transform when size actually changes
-      if (W !== currentW || H !== currentH) {
-        currentW = W; currentH = H;
+      if (W !== cloudW || H !== cloudH) {
+        cloudW = W; cloudH = H;
         cloudGroup.attr('transform', `translate(${W / 2},${H / 2})`);
       }
-      return { group: cloudGroup, W, H };
+      return { W, H };
     }
 
-    function applyCloud(layoutWords) {
-      const { group } = getCloudGroup();
+    function applyWords(layoutWords) {
+      const g = cloudGroup;
 
-      // EXIT — words that disappeared fade out then are removed
-      const exiting = group.selectAll('text')
+      // EXIT — words that are no longer in the list fade out and are removed
+      g.selectAll('text')
         .data(layoutWords, d => d.text)
-        .exit();
-      exiting.transition().duration(400)
+        .exit()
+        .transition().duration(400)
         .style('opacity', 0)
         .remove();
 
-      // ENTER — brand new words start invisible
-      const entered = group.selectAll('text')
+      // ENTER — new words start invisible at their computed position
+      const entered = g.selectAll('text')
         .data(layoutWords, d => d.text)
         .enter()
         .append('text')
@@ -168,8 +167,8 @@
         .attr('transform', d => `translate(${d.x},${d.y}) rotate(${d.rotate})`)
         .text(d => d.text);
 
-      // ENTER + UPDATE — animate size, position, and opacity together
-      group.selectAll('text')
+      // ENTER + UPDATE — animate size, colour, position, and opacity
+      g.selectAll('text')
         .data(layoutWords, d => d.text)
         .merge(entered)
         .transition().duration(700).ease(d3.easeCubicOut)
@@ -181,8 +180,9 @@
 
     function renderCloud(words) {
       if (!words || words.length === 0) return;
-      const { W, H } = getCloudGroup();
+      const { W, H } = getOrCreateGroup();
 
+      // Old words stay on screen during layout recalculation — no flash
       d3.layout.cloud()
         .size([W, H])
         .words(words.map(w => ({ text: w.text, size: w.size })))
@@ -191,12 +191,11 @@
         .font('Segoe UI, sans-serif')
         .fontWeight('bold')
         .fontSize(d => d.size)
-        .on('end', applyCloud)
+        .on('end', applyWords)
         .start();
-      // NOTE: old words stay visible while layout recalculates — no flash.
     }
 
-    // ── Mode UI ────────────────────────────────────────────────────────────
+    // ── Mode UI ───────────────────────────────────────────────────────────
     function setMode(hasBase) {
       if (hasBase) {
         modeBadge.textContent = 'img2img';
@@ -213,7 +212,7 @@
       }
     }
 
-    // ── Upload ─────────────────────────────────────────────────────────────
+    // ── Upload ────────────────────────────────────────────────────────────
     uploadBtn.addEventListener('click', () => fileInput.click());
 
     fileInput.addEventListener('change', async () => {
@@ -229,7 +228,9 @@
         if (data.success) {
           setMode(true);
         } else {
-          const msg = data.error || (data.detail && JSON.stringify(data.detail)) || `Server error ${resp.status}`;
+          const msg = data.error
+            || (data.detail && JSON.stringify(data.detail))
+            || `Server error ${resp.status}`;
           alert('Upload failed: ' + msg);
         }
       } catch (err) {
@@ -251,7 +252,7 @@
       }
     });
 
-    // ── WebSocket message handler ──────────────────────────────────────────
+    // ── WebSocket handler ─────────────────────────────────────────────────
     let currentWords = [];
 
     function handleUpdate(data) {
@@ -271,7 +272,7 @@
       }
     }
 
-    // ── WebSocket connection ───────────────────────────────────────────────
+    // ── WebSocket connection ──────────────────────────────────────────────
     function connectWS() {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
       const ws = new WebSocket(`${proto}://${location.host}/ws`);
@@ -282,13 +283,12 @@
 
     connectWS();
 
-    // ── Resize — re-render cloud to fit new dimensions ─────────────────────
+    // ── Resize ────────────────────────────────────────────────────────────
     let resizeTimer;
     window.addEventListener('resize', () => {
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
-        // Reset tracked size so group transform updates
-        currentW = 0; currentH = 0;
+        cloudW = 0; cloudH = 0; // reset so group transform recalculates
         if (currentWords.length) renderCloud(currentWords);
       }, 250);
     });

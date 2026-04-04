@@ -46,7 +46,7 @@
       "cfg": 1.0,
       "sampler_name": "euler_ancestral",
       "scheduler": "normal",
-      "denoise": 0.35
+      "denoise": 0.63
     }
   },
   "7": {
