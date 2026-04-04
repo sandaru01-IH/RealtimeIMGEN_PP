@@ -51,9 +51,20 @@
       </div>
     </section>
 
-    <!-- Right: word cloud -->
+    <!-- Right: word cloud + score panel -->
     <section class="cloud-panel">
       <svg id="word-cloud-svg"></svg>
+
+      <!-- Beauty score panel — slides up when score data arrives -->
+      <div id="score-panel" class="score-panel hidden">
+        <div class="score-header">
+          <span class="score-title">✦ Livingness Score</span>
+          <span class="score-total"><span id="score-value">—</span><span class="score-max"> / 15</span></span>
+        </div>
+        <div class="score-summary" id="score-summary"></div>
+        <div class="score-bars" id="score-bars"></div>
+        <div class="score-footer">Alexander's 15 Properties · Qwen2.5VL</div>
+      </div>
     </section>
 
   </main>
@@ -252,6 +263,39 @@
       }
     });
 
+    // ── Score panel ───────────────────────────────────────────────────────
+    const scorePanel   = document.getElementById('score-panel');
+    const scoreValue   = document.getElementById('score-value');
+    const scoreSummary = document.getElementById('score-summary');
+    const scoreBars    = document.getElementById('score-bars');
+
+    function updateScore(score) {
+      if (!score || !score.properties) return;
+
+      scoreValue.textContent = score.total.toFixed(1);
+      scoreSummary.textContent = score.summary || '';
+
+      // Colour the total based on score band
+      const pct = score.total / 15;
+      scoreValue.style.color = pct >= 0.7 ? '#00ff88'
+                              : pct >= 0.45 ? '#ffd166'
+                              : '#ff6b6b';
+
+      // Render property bars (top 8 only to keep it compact)
+      scoreBars.innerHTML = score.properties.slice(0, 8).map(p => `
+        <div class="score-bar-row">
+          <span class="score-bar-label">${p.label}</span>
+          <div class="score-bar-track">
+            <div class="score-bar-fill" style="width:${p.pct}%;background:${
+              p.pct >= 70 ? '#00ff88' : p.pct >= 45 ? '#ffd166' : '#ff6b6b'
+            }"></div>
+          </div>
+          <span class="score-bar-val">${p.value.toFixed(1)}</span>
+        </div>`).join('');
+
+      scorePanel.classList.remove('hidden');
+    }
+
     // ── WebSocket handler ─────────────────────────────────────────────────
     let currentWords = [];
 
@@ -269,6 +313,12 @@
       }
       if (data.has_base_image !== undefined) {
         setMode(data.has_base_image);
+      }
+      if (data.score && data.score.total !== undefined) {
+        updateScore(data.score);
+      }
+      if (data.type === 'score_update' && data.score) {
+        updateScore(data.score);
       }
     }
 

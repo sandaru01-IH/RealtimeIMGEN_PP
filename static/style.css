@@ -408,6 +408,112 @@ body {
   border: 1px solid #00e5ff;
 }
 
+/* =========================================================
+   Beauty Score Panel (inside cloud-panel, bottom overlay)
+   ========================================================= */
+
+.score-panel {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(to top, rgba(10,10,10,0.97) 80%, transparent);
+  padding: 0.9rem 1rem 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  transition: opacity 0.5s ease, transform 0.5s ease;
+  z-index: 4;
+}
+
+.score-panel.hidden {
+  opacity: 0;
+  transform: translateY(10px);
+  pointer-events: none;
+}
+
+.score-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.score-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #888;
+  text-transform: uppercase;
+}
+
+.score-total {
+  font-size: 1.6rem;
+  font-weight: 900;
+  line-height: 1;
+  transition: color 0.6s ease;
+}
+
+.score-max {
+  font-size: 0.85rem;
+  color: #555;
+  font-weight: 400;
+}
+
+.score-summary {
+  font-size: 0.68rem;
+  color: #777;
+  line-height: 1.4;
+  font-style: italic;
+  min-height: 0.9rem;
+}
+
+.score-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+}
+
+.score-bar-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 26px;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.score-bar-label {
+  font-size: 0.62rem;
+  color: #777;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.score-bar-track {
+  height: 4px;
+  background: #222;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.score-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.8s ease;
+}
+
+.score-bar-val {
+  font-size: 0.6rem;
+  color: #666;
+  text-align: right;
+}
+
+.score-footer {
+  font-size: 0.58rem;
+  color: #444;
+  text-align: right;
+  margin-top: 0.1rem;
+}
+
 /* Upload overlay on image panel */
 .upload-overlay {
   position: absolute;
