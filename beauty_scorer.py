@@ -101,23 +101,42 @@ USER_PROMPT = "Score this street scene using the 15 properties of living structu
 
 # ── Scorer class ─────────────────────────────────────────────────────────────
 
+RETRY_INTERVAL = 30  # seconds between availability rechecks when unavailable
+
+
 class BeautyScorer:
     def __init__(self):
-        self._available: bool | None = None  # None = not yet checked
+        self._available: bool = False
+        self._last_check: float = 0.0   # epoch seconds of last check
 
     def _check_available(self) -> bool:
         if not OLLAMA_AVAILABLE:
+            print("[BeautyScorer] ollama Python package not installed.")
             return False
         try:
             models = _ollama.list()
+            # models.models is a list of Model objects; .model is the name string
             names = [m.model for m in models.models]
-            return any(MODEL in n for n in names)
-        except Exception:
+            print(f"[BeautyScorer] Ollama models found: {names}")
+            # Accept any name that starts with or contains the base model name
+            base = MODEL.split(":")[0]   # e.g. "qwen2.5vl"
+            match = any(base in n for n in names)
+            if match:
+                print(f"[BeautyScorer] Model '{MODEL}' confirmed available.")
+            else:
+                print(f"[BeautyScorer] Model '{MODEL}' not found in Ollama list.")
+            return match
+        except Exception as e:
+            print(f"[BeautyScorer] Ollama not reachable: {e}")
             return False
 
     def is_available(self) -> bool:
-        if self._available is None:
-            self._available = self._check_available()
+        # Always recheck if not available (with cooldown to avoid hammering)
+        if not self._available:
+            now = time.time()
+            if now - self._last_check >= RETRY_INTERVAL:
+                self._last_check = now
+                self._available = self._check_available()
         return self._available
 
     def score(self, image_b64: str) -> dict | None:
@@ -155,7 +174,8 @@ class BeautyScorer:
 
         except Exception as e:
             print(f"[BeautyScorer] Error: {e}")
-            self._available = None  # re-check next time
+            self._available = False  # force recheck on next cycle
+            self._last_check = 0.0
             return None
 
 
