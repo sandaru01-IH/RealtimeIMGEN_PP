@@ -156,12 +156,15 @@ class BeautyScorer:
                 model=MODEL,
                 messages=[
                     {
+                        "role": "system",
+                        "content": SYSTEM_PROMPT,
+                    },
+                    {
                         "role": "user",
                         "content": USER_PROMPT,
                         "images": [image_b64],
-                    }
+                    },
                 ],
-                system=SYSTEM_PROMPT,
                 options={"temperature": 0.1},
             )
             elapsed = round(time.time() - t0, 1)
